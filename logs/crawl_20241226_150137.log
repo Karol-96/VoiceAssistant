@@ -1,0 +1,4 @@
+2024-12-26 15:01:37,677 - Starting crawl of https://cimex.com.np
+2024-12-26 15:01:37,686 - Processing route: 
+2024-12-26 15:01:37,695 - Error saving PDF for https://cimex.com.np: No wkhtmltopdf executable found: "b''"
+If this file exists please check that this process can read it or you can pass path to it manually in method call, check README. Otherwise please install wkhtmltopdf - https://github.com/JazzCore/python-pdfkit/wiki/Installing-wkhtmltopdf

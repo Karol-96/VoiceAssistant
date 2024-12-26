@@ -1,0 +1,36 @@
+2024-12-26 15:07:49,645 - INFO - Starting crawl of https://cimex.com.np
+2024-12-26 15:07:49,695 - INFO - Processing route: 
+2024-12-26 15:07:53,044 - ERROR - Error saving PDF for https://cimex.com.np: No wkhtmltopdf executable found: "b''"
+If this file exists please check that this process can read it or you can pass path to it manually in method call, check README. Otherwise please install wkhtmltopdf - https://github.com/JazzCore/python-pdfkit/wiki/Installing-wkhtmltopdf
+2024-12-26 15:08:18,851 - INFO - Starting crawl of https://cimex.com.np
+2024-12-26 15:08:18,883 - INFO - Processing route: 
+2024-12-26 15:08:21,980 - ERROR - Error saving PDF for https://cimex.com.np: No wkhtmltopdf executable found: "b''"
+If this file exists please check that this process can read it or you can pass path to it manually in method call, check README. Otherwise please install wkhtmltopdf - https://github.com/JazzCore/python-pdfkit/wiki/Installing-wkhtmltopdf
+2024-12-26 15:08:22,986 - INFO - Saved routes summary to routes_summary.txt
+2024-12-26 15:08:58,560 - INFO - Starting crawl of https://cimex.com.np
+2024-12-26 15:08:58,581 - INFO - Processing route: 
+2024-12-26 15:09:01,763 - ERROR - Error saving PDF for https://cimex.com.np: No wkhtmltopdf executable found: "b''"
+If this file exists please check that this process can read it or you can pass path to it manually in method call, check README. Otherwise please install wkhtmltopdf - https://github.com/JazzCore/python-pdfkit/wiki/Installing-wkhtmltopdf
+2024-12-26 15:09:02,769 - INFO - Saved routes summary to routes_summary.txt
+2024-12-26 15:12:46,080 - INFO - Starting crawl of https://cimex.com.np
+2024-12-26 15:12:46,104 - INFO - Processing route: 
+2024-12-26 15:12:46,267 - ERROR - Error saving PDF for https://cimex.com.np: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2024-12-26 15:12:47,274 - INFO - Saved routes summary to routes_summary.txt
+2024-12-26 15:12:47,277 - WARNING - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x10507bd10>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/aea86ad62c65a1f6a0fd5b2828b7407c
+2024-12-26 15:12:47,280 - WARNING - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x10507c5d0>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/aea86ad62c65a1f6a0fd5b2828b7407c
+2024-12-26 15:12:47,282 - WARNING - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x10507af10>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/aea86ad62c65a1f6a0fd5b2828b7407c
+2024-12-26 15:15:49,863 - INFO - Starting crawl of https://cimex.com.np
+2024-12-26 15:15:49,886 - INFO - Processing route: 
+2024-12-26 15:15:49,996 - WARNING - Attempt 1 failed, retrying...
+2024-12-26 15:15:52,001 - WARNING - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1053a4110>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/4566524cdbf4225375f1bd39f899cc1b/url
+2024-12-26 15:15:52,002 - WARNING - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1053a3850>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/4566524cdbf4225375f1bd39f899cc1b/url
+2024-12-26 15:15:52,002 - WARNING - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1053a4e10>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/4566524cdbf4225375f1bd39f899cc1b/url
+2024-12-26 15:15:52,003 - WARNING - Attempt 2 failed, retrying...
+2024-12-26 15:15:56,014 - WARNING - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1053a6610>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/4566524cdbf4225375f1bd39f899cc1b/url
+2024-12-26 15:15:56,016 - WARNING - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1053a7250>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/4566524cdbf4225375f1bd39f899cc1b/url
+2024-12-26 15:15:56,017 - WARNING - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1053a7e90>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/4566524cdbf4225375f1bd39f899cc1b/url
+2024-12-26 15:15:56,017 - ERROR - Error saving PDF for https://cimex.com.np: HTTPConnectionPool(host='localhost', port=58602): Max retries exceeded with url: /session/4566524cdbf4225375f1bd39f899cc1b/url (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1053b0b90>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2024-12-26 15:15:58,024 - INFO - Saved routes summary to routes_summary.txt
+2024-12-26 15:15:58,026 - WARNING - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1053b1410>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/4566524cdbf4225375f1bd39f899cc1b
+2024-12-26 15:15:58,027 - WARNING - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1053b1f90>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/4566524cdbf4225375f1bd39f899cc1b
+2024-12-26 15:15:58,028 - WARNING - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1053b2910>: Failed to establish a new connection: [Errno 61] Connection refused')': /session/4566524cdbf4225375f1bd39f899cc1b
