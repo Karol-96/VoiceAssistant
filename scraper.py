@@ -1,26 +1,33 @@
-from url_parser import URLParser
+# Standard library imports
 import os
-from tqdm import tqdm
 import logging
-from datetime import datetime
 import time
+import tempfile  # Add this import
+import base64
+import json
+import shutil
+from datetime import datetime
+from typing import Dict, Optional, List
+from urllib.parse import urlparse
+
+# Third-party imports
+import PyPDF2
+from bs4 import BeautifulSoup
+import requests
+from tqdm import tqdm
+import chromedriver_autoinstaller
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
-import base64
-from typing import Dict, Optional, List
-import chromedriver_autoinstaller
-from urllib.parse import urlparse
-import PyPDF2
-import io
 from selenium.common.exceptions import WebDriverException
-import subprocess
 import psutil
-import requests
-import json
+import subprocess
+
+# Local imports
+from url_parser import URLParser
 
 
 class PDFScraper:
@@ -66,8 +73,9 @@ class PDFScraper:
             chrome_options = self._get_chrome_options()
             service = Service()
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
-            self.driver.set_page_load_timeout(30)
-            self.driver.set_script_timeout(30)
+            # Increase timeouts
+            self.driver.set_page_load_timeout(180)  # 3 minutes
+            self.driver.set_script_timeout(180)     # 3 minutes
         except Exception as e:
             logging.error(f"Error creating driver: {e}")
             raise
@@ -302,16 +310,21 @@ class PDFScraper:
                     }
                 }
                 
-                # Save as JSON
-                filename = self._generate_filename(url).replace('.pdf', '.json')
-                output_path = os.path.join(self.output_dir, 'raw_content', filename)
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                # Create directory if it doesn't exist
+                output_dir = os.path.join(self.output_dir, 'raw_content')
+                os.makedirs(output_dir, exist_ok=True)
+                
+                # Save content
+                filename = self._generate_filename(url)
+                output_path = os.path.join(output_dir, filename)
                 
                 with open(output_path, 'w', encoding='utf-8') as f:
                     json.dump(page_content, f, ensure_ascii=False, indent=2)
                 
-                logging.info(f"Successfully saved content for: {url}")
+                logging.info(f"Successfully saved content to: {output_path}")
                 return page_content
+                
+
                 
             except Exception as e:
                 if attempt == max_retries - 1:
@@ -330,35 +343,57 @@ class PDFScraper:
         
         return None
 
+
     def save_as_pdf(self, url: str) -> Optional[bytes]:
         """Try multiple methods to save page as PDF"""
         
-        def try_requests_save() -> Optional[bytes]:
-            """Try to save using requests"""
-            try:
-                import requests
-                response = requests.get(url, timeout=10)
-                response.raise_for_status()
-                
-                # Convert HTML to PDF using pdfkit if available
+        def try_selenium_save() -> Optional[bytes]:
+            """Try to save using Selenium"""
+            max_retries = 3  # Increase retries
+            for attempt in range(max_retries):
                 try:
-                    import pdfkit
-                    pdf_content = pdfkit.from_string(response.text, False)
-                    if pdf_content and len(pdf_content) > 1000:
-                        logging.info(f"Successfully saved PDF using requests/pdfkit: {url}")
-                        return pdf_content
-                except:
-                    pass
+                    # First check if URL is accessible
+                    response = requests.head(url, timeout=30)
+                    if response.status_code != 200:
+                        logging.error(f"URL not accessible: {url}")
+                        return None
+
+                    self._create_driver()
+                    logging.info(f"Attempting to load URL with Selenium: {url}")
                     
-                # If pdfkit fails, at least log the HTML
-                html_path = os.path.join(self.output_dir, "html_backups", f"{urlparse(url).path.strip('/')}.html")
-                os.makedirs(os.path.dirname(html_path), exist_ok=True)
-                with open(html_path, 'w', encoding='utf-8') as f:
-                    f.write(response.text)
-                logging.info(f"Saved HTML backup: {html_path}")
-                
-            except Exception as e:
-                logging.warning(f"Requests method failed for {url}: {str(e)}")
+                    # Load URL with extended wait
+                    self.driver.get(url)
+                    WebDriverWait(self.driver, 60).until(  # Increase wait time to 60 seconds
+                        lambda d: d.execute_script('return document.readyState') == 'complete'
+                    )
+
+                    # Handle popups and wait for content
+                    self._handle_popups()
+                    time.sleep(5)  # Increase wait time
+
+                    # Generate PDF
+                    print_options = self._get_print_options()
+                    pdf = self.driver.execute_cdp_cmd('Page.printToPDF', print_options)
+                    pdf_content = base64.b64decode(pdf['data'])
+
+                    if pdf_content and len(pdf_content) > 1000:
+                        logging.info(f"Successfully generated PDF using Selenium: {url}")
+                        return pdf_content
+
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        logging.error(f"Selenium method failed for {url} after {max_retries} attempts: {str(e)}")
+                    else:
+                        logging.warning(f"Selenium attempt {attempt + 1} failed for {url}: {str(e)}, retrying...")
+                        time.sleep(10 * (attempt + 1))  # Increase backoff time
+                finally:
+                    if self.driver:
+                        try:
+                            self.driver.quit()
+                        except:
+                            pass
+                    self.driver = None
+                    self._kill_chrome_instances()
             return None
 
         def try_selenium_save() -> Optional[bytes]:
@@ -413,7 +448,7 @@ class PDFScraper:
         def try_bs4_save() -> Optional[bytes]:
             """Try to save using BeautifulSoup"""
             try:
-                response = requests.get(url, timeout=10)
+                response = requests.get(url, timeout=30)
                 response.raise_for_status()
                 
                 soup = BeautifulSoup(response.content, 'html.parser')
@@ -429,22 +464,22 @@ class PDFScraper:
                 try:
                     from reportlab.pdfgen import canvas
                     from reportlab.lib.pagesizes import letter
+                    from reportlab.lib.styles import getSampleStyleSheet
+                    from reportlab.platypus import SimpleDocTemplate, Paragraph
                     from io import BytesIO
                     
                     buffer = BytesIO()
-                    c = canvas.Canvas(buffer, pagesize=letter)
-                    y = 750  # Starting y position
+                    doc = SimpleDocTemplate(buffer, pagesize=letter)
+                    styles = getSampleStyleSheet()
+                    story = []
                     
-                    # Write text to PDF
-                    for line in text.split('\n'):
-                        if line.strip():
-                            if y < 50:  # New page if near bottom
-                                c.showPage()
-                                y = 750
-                            c.drawString(50, y, line[:100])  # Limit line length
-                            y -= 12
+                    # Split text into paragraphs and create PDF content
+                    for para in text.split('\n\n'):
+                        if para.strip():
+                            p = Paragraph(para.strip(), styles['Normal'])
+                            story.append(p)
                     
-                    c.save()
+                    doc.build(story)
                     pdf_content = buffer.getvalue()
                     
                     if pdf_content and len(pdf_content) > 1000:
@@ -458,7 +493,7 @@ class PDFScraper:
                 logging.warning(f"BeautifulSoup method failed for {url}: {str(e)}")
             return None
 
-        # Try each method in sequence
+        # Try each method in sequence with proper logging
         logging.info(f"Attempting to save PDF for {url}")
         
         # Try Selenium first
@@ -479,12 +514,14 @@ class PDFScraper:
         logging.error(f"All methods failed for {url}")
         return None
 
-
     def _generate_filename(self, url: str) -> str:
+        """Generate safe filename from URL"""
         filename = url.replace(self.url_parser.start_url, '').replace('/', '_')
         if not filename:
             filename = 'index'
-        return filename.strip('_') + '.pdf'
+        final_name = filename.strip('_') + '.json'
+        logging.info(f"Generated filename: {final_name}")
+        return final_name
 
 
     def _get_print_options(self) -> Dict:
@@ -503,66 +540,162 @@ class PDFScraper:
         }
 
     def merge_pdfs(self, pdf_contents: List[bytes], output_path: str) -> bool:
-        """Merge multiple PDFs into a single file"""
+        """
+        Merge multiple PDFs into a single file with bookmarks
+        """
+        merger = None
         try:
-            merger = PyPDF2.PdfMerger()
+            merger = PyPDF2.PdfMerger(strict=False)
+            total_pdfs = len(pdf_contents)
+            successful_merges = 0
             
-            for pdf_content in pdf_contents:
-                if pdf_content:
-                    pdf_file = io.BytesIO(pdf_content)
-                    merger.append(pdf_file)
+            logging.info(f"Attempting to merge {total_pdfs} PDFs...")
             
-            with open(output_path, 'wb') as output_file:
-                merger.write(output_file)
-            
-            return True
-            
+            # Create a temporary directory for processing
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Process each PDF content
+                for index, content in enumerate(pdf_contents, 1):
+                    if not content:
+                        logging.warning(f"Skipping empty PDF content at index {index}")
+                        continue
+                        
+                    try:
+                        # Save content to temporary file
+                        temp_path = os.path.join(temp_dir, f'temp_{index}.pdf')
+                        with open(temp_path, 'wb') as temp_file:
+                            temp_file.write(content)
+                        
+                        # Verify the PDF is valid
+                        try:
+                            with open(temp_path, 'rb') as pdf_file:
+                                PyPDF2.PdfReader(pdf_file)
+                        except Exception as e:
+                            logging.error(f"Invalid PDF at index {index}: {str(e)}")
+                            continue
+                        
+                        # Add PDF to merger
+                        merger.append(
+                            fileobj=temp_path,
+                            bookmark=f"Page {index}",
+                            import_bookmarks=True
+                        )
+                        successful_merges += 1
+                        logging.info(f"Successfully added PDF {index}/{total_pdfs}")
+                        
+                    except Exception as e:
+                        logging.error(f"Error processing PDF {index}: {str(e)}")
+                
+                if successful_merges > 0:
+                    # Ensure output directory exists
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                    
+                    # Write the merged PDF
+                    with open(output_path, 'wb') as output_file:
+                        merger.write(output_file)
+                    
+                    # Verify the output file
+                    file_size = os.path.getsize(output_path)
+                    logging.info(f"""
+                    PDF Merge Summary:
+                    - Total PDFs: {total_pdfs}
+                    - Successfully merged: {successful_merges}
+                    - Output file: {output_path}
+                    - File size: {file_size / 1024:.2f} KB
+                    """)
+                    
+                    return True
+                else:
+                    logging.error("No PDFs were successfully processed for merging")
+                    return False
+                    
         except Exception as e:
-            logging.error(f"Error merging PDFs: {e}")
+            logging.error(f"Error merging PDFs: {str(e)}")
             return False
+        finally:
+            if merger:
+                try:
+                    merger.close()
+                except:
+                    pass
 
     def scrape(self, max_depth: int = 2) -> None:
-        """Scrape all URLs and save complete content"""
+        """Scrape all URLs and save as a single merged PDF"""
+        os.makedirs(self.output_dir, exist_ok=True)
+        
         try:
+            # Get URLs and limit to 10
             urls_to_visit = [url for url in self.url_parser.get_all_urls(max_depth)
                             if 'email-protection' not in url]
             urls_to_visit = list(set(urls_to_visit))  # Ensure uniqueness
+            urls_to_visit = urls_to_visit[:10]  # Take first 10 URLs
             total_urls = len(urls_to_visit)
-            
-            logging.info(f"Starting content extraction for {total_urls} URLs")
-            
-            collected_content = []
+
+            logging.info(f"Selected {total_urls} URLs to process:")
+            for idx, url in enumerate(urls_to_visit, 1):
+                logging.info(f"{idx}. {url}")
+
+            pdf_contents = []
             failed_urls = []
             
             with tqdm(total=total_urls, desc="Extracting Content") as pbar:
                 for index, url in enumerate(urls_to_visit, 1):
                     if url not in self.visited_urls:
-                        logging.info(f"Processing URL {index}/{total_urls}: {url}")
-                        content = self.save_complete_page(url)
+                        logging.info(f"\nProcessing URL {index}/{total_urls}: {url}")
                         
-                        if content:
-                            collected_content.append(content)
-                            self.visited_urls.add(url)
-                            self.routes_log.append(urlparse(url).path)
-                            logging.info(f"Successfully processed: {url}")
-                        else:
-                            failed_urls.append(url)
-                            logging.warning(f"Failed to process: {url}")
-                        
+                        # Try to save content with multiple retries
+                        max_retries = 3
+                        for attempt in range(max_retries):
+                            try:
+                                pdf_content = self.save_as_pdf(url)
+                                
+                                if pdf_content:
+                                    pdf_contents.append(pdf_content)
+                                    self.visited_urls.add(url)
+                                    logging.info(f"Successfully processed: {url}")
+                                    break  # Success - exit retry loop
+                                
+                                if attempt == max_retries - 1:  # Last attempt failed
+                                    failed_urls.append(url)
+                                    logging.error(f"Failed to process after {max_retries} attempts: {url}")
+                                    
+                            except Exception as e:
+                                if attempt == max_retries - 1:  # Last attempt
+                                    failed_urls.append(url)
+                                    logging.error(f"Error processing {url} (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                                else:
+                                    logging.warning(f"Attempt {attempt + 1} failed for {url}: {str(e)}, retrying...")
+                                    time.sleep(5 * (attempt + 1))  # Exponential backoff
+                            
                         pbar.update(1)
-                        time.sleep(3)
-            
-            # Save summary
-            if collected_content:
-                summary_path = os.path.join(self.output_dir, 'content_summary.json')
-                with open(summary_path, 'w', encoding='utf-8') as f:
-                    json.dump({
-                        'total_urls': total_urls,
-                        'successful': len(collected_content),
-                        'failed': len(failed_urls),
-                        'timestamp': datetime.now().isoformat(),
-                        'content': collected_content
-                    }, f, ensure_ascii=False, indent=2)
+                        time.sleep(3)  # Delay between URLs
+
+            # Create the merged PDF
+            if pdf_contents:
+                # Generate filename with website name and timestamp
+                website_name = urlparse(self.url_parser.start_url).netloc.split('.')[0]
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                merged_filename = f"{website_name}_merged_{timestamp}.pdf"
+                merged_pdf_path = os.path.join(self.output_dir, merged_filename)
+                
+                if self.merge_pdfs(pdf_contents, merged_pdf_path):
+                    logging.info(f"Successfully created merged PDF at: {merged_pdf_path}")
+                else:
+                    logging.error("Failed to create merged PDF")
+                    
+                # Clean up individual PDFs and directories
+                try:
+                    if os.path.exists(os.path.join(self.output_dir, 'pdfs')):
+                        import shutil
+                        shutil.rmtree(os.path.join(self.output_dir, 'pdfs'))
+                    if os.path.exists(os.path.join(self.output_dir, 'raw_content')):
+                        shutil.rmtree(os.path.join(self.output_dir, 'raw_content'))
+                except Exception as e:
+                    logging.warning(f"Error cleaning up directories: {e}")
+                    
+            logging.info(f"\nScraping completed:")
+            logging.info(f"- Total URLs: {total_urls}")
+            logging.info(f"- Successfully processed: {len(pdf_contents)}")
+            logging.info(f"- Failed: {len(failed_urls)}")
             
         except Exception as e:
             logging.error(f"Scraping error: {e}")
@@ -589,11 +722,7 @@ def main():
     except Exception as e:
         print(f"\nAn error occurred: {e}")
     finally:
-        print(f"\nScrape Complete!")
-        print(f"PDFs saved in: {output_directory}")
-        print(f"Total pages processed: {len(scraper.visited_urls)}")
-        print(f"Total unique routes found: {len(scraper.routes_log)}")
-        print(f"See routes_summary.txt for complete list of routes")
+        print("\nScrape Complete!")
 
 if __name__ == "__main__":
     main()
