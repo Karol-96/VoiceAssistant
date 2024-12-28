@@ -349,51 +349,32 @@ class PDFScraper:
         
         def try_selenium_save() -> Optional[bytes]:
             """Try to save using Selenium"""
-            max_retries = 3  # Increase retries
-            for attempt in range(max_retries):
-                try:
-                    # First check if URL is accessible
-                    response = requests.head(url, timeout=30)
-                    if response.status_code != 200:
-                        logging.error(f"URL not accessible: {url}")
-                        return None
-
-                    self._create_driver()
-                    logging.info(f"Attempting to load URL with Selenium: {url}")
+            try:
+                logging.info(f"Attempting to load URL with Selenium: {url}")
+                self._create_driver()
+                self.driver.get(url)
+                self._handle_popups()
+                
+                # Get PDF content
+                pdf_data = self.driver.execute_cdp_cmd("Page.printToPDF", {
+                    "printBackground": True,
+                    "preferCSSPageSize": True,
+                    "scale": 1,
+                })
+                
+                if pdf_data and "data" in pdf_data:
+                    pdf_bytes = base64.b64decode(pdf_data["data"])
+                    logging.info(f"Successfully generated PDF using Selenium: {url}")
+                    return pdf_bytes
                     
-                    # Load URL with extended wait
-                    self.driver.get(url)
-                    WebDriverWait(self.driver, 60).until(  # Increase wait time to 60 seconds
-                        lambda d: d.execute_script('return document.readyState') == 'complete'
-                    )
-
-                    # Handle popups and wait for content
-                    self._handle_popups()
-                    time.sleep(5)  # Increase wait time
-
-                    # Generate PDF
-                    print_options = self._get_print_options()
-                    pdf = self.driver.execute_cdp_cmd('Page.printToPDF', print_options)
-                    pdf_content = base64.b64decode(pdf['data'])
-
-                    if pdf_content and len(pdf_content) > 1000:
-                        logging.info(f"Successfully generated PDF using Selenium: {url}")
-                        return pdf_content
-
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        logging.error(f"Selenium method failed for {url} after {max_retries} attempts: {str(e)}")
-                    else:
-                        logging.warning(f"Selenium attempt {attempt + 1} failed for {url}: {str(e)}, retrying...")
-                        time.sleep(10 * (attempt + 1))  # Increase backoff time
-                finally:
-                    if self.driver:
-                        try:
-                            self.driver.quit()
-                        except:
-                            pass
-                    self.driver = None
-                    self._kill_chrome_instances()
+            except Exception as e:
+                logging.error(f"Selenium method failed for {url} after 1 attempts: {str(e)}")
+            finally:
+                if self.driver:
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
             return None
 
         def try_selenium_save() -> Optional[bytes]:
@@ -444,6 +425,80 @@ class PDFScraper:
                     self.driver = None
                     self._kill_chrome_instances()
             return None
+        def try_requests_save() -> Optional[bytes]:
+            """Try to save using requests"""
+            try:
+                logging.info(f"Attempting to save using requests: {url}")
+                response = requests.get(url, timeout=30)
+                response.raise_for_status()
+                
+                # Create a temporary HTML file
+                with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as temp_html:
+                    temp_html.write(response.content)
+                    temp_html_path = temp_html.name
+                
+                # Convert HTML to PDF using Chrome
+                self._create_driver()
+                self.driver.get(f'file://{temp_html_path}')
+                self._handle_popups()
+                
+                # Get PDF content
+                pdf_data = self.driver.execute_cdp_cmd("Page.printToPDF", {
+                    "printBackground": True,
+                    "preferCSSPageSize": True,
+                    "scale": 1,
+                })
+                
+                if pdf_data and "data" in pdf_data:
+                    pdf_bytes = base64.b64decode(pdf_data["data"])
+                    logging.info(f"Successfully generated PDF using requests: {url}")
+                    return pdf_bytes
+                    
+            except Exception as e:
+                logging.warning(f"Requests method failed for {url}: {str(e)}")
+            finally:
+                if self.driver:
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
+                try:
+                    os.unlink(temp_html_path)
+                except:
+                    pass
+            return None
+
+        # Try each method in sequence
+        logging.info(f"Attempting to save PDF for {url}")
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Try Selenium first
+                pdf_content = try_selenium_save()
+                if pdf_content:
+                    return pdf_content
+                    
+                # Try requests next
+                pdf_content = try_requests_save()
+                if pdf_content:
+                    return pdf_content
+                    
+                if attempt < max_retries - 1:
+                    logging.warning(f"Attempt {attempt + 1} failed for {url}, retrying...")
+                    time.sleep(5 * (attempt + 1))  # Exponential backoff
+                else:
+                    logging.error(f"Error processing {url} (attempt {attempt + 1}/{max_retries}): All methods failed")
+                    
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logging.warning(f"Attempt {attempt + 1} failed for {url}: {str(e)}, retrying...")
+                    time.sleep(5 * (attempt + 1))
+                else:
+                    logging.error(f"Error processing {url} (attempt {attempt + 1}/{max_retries}): {str(e)}")
+        
+        return None
+
 
         def try_bs4_save() -> Optional[bytes]:
             """Try to save using BeautifulSoup"""
@@ -513,7 +568,6 @@ class PDFScraper:
         
         logging.error(f"All methods failed for {url}")
         return None
-
     def _generate_filename(self, url: str) -> str:
         """Generate safe filename from URL"""
         filename = url.replace(self.url_parser.start_url, '').replace('/', '_')
@@ -541,7 +595,7 @@ class PDFScraper:
 
     def merge_pdfs(self, pdf_contents: List[bytes], output_path: str) -> bool:
         """
-        Merge multiple PDFs into a single file with bookmarks
+        Merge multiple PDFs into a single file with outline items
         """
         merger = None
         try:
@@ -573,11 +627,11 @@ class PDFScraper:
                             logging.error(f"Invalid PDF at index {index}: {str(e)}")
                             continue
                         
-                        # Add PDF to merger
+                        # Add PDF to merger with outline item
                         merger.append(
                             fileobj=temp_path,
-                            bookmark=f"Page {index}",
-                            import_bookmarks=True
+                            outline_item=f"Page {index}",  # Using outline_item instead of bookmark
+                            import_outline=True  # Using import_outline instead of import_bookmarks
                         )
                         successful_merges += 1
                         logging.info(f"Successfully added PDF {index}/{total_pdfs}")
