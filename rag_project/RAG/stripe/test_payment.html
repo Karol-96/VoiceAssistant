@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stripe Payment Test</title>
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+        #card-element {
+            margin: 20px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <form id="payment-form">
+        <div id="card-element"></div>
+        <button id="checkout">Pay $10</button>
+        <div id="payment-message"></div>
+    </form>
+
+    <script>
+        const stripe = Stripe('pk_test_51Qej8uGL5dHVlQvaQECGDwJIdkTNl95piLpqeei2bAPKwardw6aHhya3NKBskk7uaAVi1hrVNwmWvOOGa5eRjqLK008SONBiPI'); // Replace with your TEST publishable key
+        const elements = stripe.elements();
+        const card = elements.create('card');
+        card.mount('#card-element');
+        
+        document.getElementById('checkout').addEventListener('click', async (e) => {
+        e.preventDefault();
+        const messageDiv = document.getElementById('payment-message');
+        messageDiv.textContent = 'Processing payment...';
+        
+        try {
+            const response = await fetch('/create-payment-intent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    amount: 1000, // $10.00
+                    currency: 'usd'
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const { clientSecret } = await response.json();
+
+            const result = await stripe.confirmCardPayment(clientSecret, {
+                payment_method: {
+                    card: card,
+                    billing_details: {
+                        name: 'Test User'
+                    }
+                }
+            });
+
+            if (result.error) {
+                messageDiv.textContent = `Payment failed: ${result.error.message}`;
+                console.error('Payment error:', result.error);
+            } else {
+                messageDiv.textContent = 'Payment successful!';
+                console.log('Payment success:', result.paymentIntent);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            messageDiv.textContent = `Error: ${error.message}`;
+        }
+    });
+</script>
+</body>
+</html>
